@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git cmake ninja-build meson pkg-config \
     libibverbs-dev librdmacm-dev libnuma-dev \
     autoconf automake libtool curl \
-    systemd-dev zlib1g-dev \
+    systemd-dev zlib1g-dev pybind11-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # UCX 1.20.0 — required for cross-node GPU RDMA on GB200
