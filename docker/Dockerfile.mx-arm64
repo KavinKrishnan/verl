@@ -1,0 +1,113 @@
+# verl + ModelExpress ARM64 Dockerfile for GB200 (GKE DGXCloud)
+# Builds UCX 1.20 + NIXL from source for cross-node GPU RDMA
+#
+# Build:
+#   docker buildx build --platform linux/arm64 \
+#     -f docker/Dockerfile.mx-arm64 \
+#     -t nvcr.io/nvidian/dynamo-dev/verl-mx:latest --push .
+
+# =============================================================================
+# Stage 1: Builder — compile UCX 1.20, NIXL, and install MX client
+# =============================================================================
+FROM nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu24.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 python3.12-dev python3-pip \
+    git cmake ninja-build meson pkg-config \
+    libibverbs-dev librdmacm-dev libnuma-dev \
+    autoconf automake libtool curl \
+    systemd-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# UCX 1.20.0 — required for cross-node GPU RDMA on GB200
+RUN git clone --depth 1 -b v1.20.0 https://github.com/openucx/ucx.git /opt/ucx-src \
+    && cd /opt/ucx-src \
+    && ./autogen.sh \
+    && ./configure --prefix=/opt/ucx-install \
+        --with-cuda=/usr/local/cuda \
+        --with-verbs \
+        --enable-mt \
+    && make -j$(nproc) \
+    && make install \
+    && rm -rf /opt/ucx-src
+
+ENV PATH="/opt/ucx-install/bin:$PATH" \
+    LD_LIBRARY_PATH="/opt/ucx-install/lib:$LD_LIBRARY_PATH" \
+    PKG_CONFIG_PATH="/opt/ucx-install/lib/pkgconfig:$PKG_CONFIG_PATH" \
+    CMAKE_PREFIX_PATH="/opt/ucx-install:$CMAKE_PREFIX_PATH"
+
+# NIXL — NVIDIA Inference tranXfer Library
+RUN git clone --depth 1 -b v1.0.1 https://github.com/ai-dynamo/nixl.git /opt/nixl-src \
+    && cd /opt/nixl-src \
+    && meson setup build \
+        --prefix=/opt/nixl-install \
+        -Ducx_path=/opt/ucx-install \
+        -Denable_plugins=UCX \
+    && cd build \
+    && ninja -j2 \
+    && ninja install \
+    && cd /opt/nixl-src \
+    && python3 -m pip install --break-system-packages --no-build-isolation . || \
+       (echo "pip install failed, copying manually" && \
+        mkdir -p /usr/local/lib/python3.12/dist-packages/nixl && \
+        cp -r build/src/bindings/python/* /usr/local/lib/python3.12/dist-packages/nixl/ 2>/dev/null; true)
+
+# ModelExpress Python client
+RUN python3 -m pip install --break-system-packages --no-deps \
+    "modelexpress @ git+https://github.com/ai-dynamo/modelexpress.git@kavink/RL#subdirectory=modelexpress_client/python" \
+    && python3 -m pip install --break-system-packages grpcio protobuf
+
+# =============================================================================
+# Stage 2: Runtime — verl + vLLM + MX + NIXL
+# =============================================================================
+FROM nvcr.io/nvidia/cuda:12.8.1-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 python3.12-dev python3.12-venv python3-pip \
+    git libibverbs1 ibverbs-providers rdma-core libnuma1 curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python
+
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+# Copy UCX and NIXL from builder
+COPY --from=builder /opt/ucx-install /opt/ucx-install
+COPY --from=builder /opt/nixl-install /opt/nixl-install
+
+ENV PATH="/opt/ucx-install/bin:$PATH" \
+    LD_LIBRARY_PATH="/opt/ucx-install/lib:/opt/nixl-install/lib:/opt/nixl-install/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH"
+
+# Install PyTorch (ARM64)
+RUN pip install torch --index-url https://download.pytorch.org/whl/cu128
+
+# Install vLLM
+RUN pip install vllm
+
+# Install verl from our branch with MX checkpoint engine
+WORKDIR /opt/verl
+COPY . /opt/verl/
+RUN pip install -e ".[gpu]" 2>/dev/null || pip install -e . 2>/dev/null || \
+    pip install ray transformers datasets accelerate omegaconf hydra-core \
+    tensordict pydantic pyzmq aiohttp httpx cupy-cuda12x
+
+# Install MX + NIXL into the same environment
+RUN VSITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
+    cp -r /usr/local/lib/python3.12/dist-packages/modelexpress $VSITE/modelexpress 2>/dev/null; \
+    cp -r /opt/nixl-install/lib/python3/dist-packages/nixl_cu12 $VSITE/nixl_cu12 2>/dev/null; \
+    ln -sf nixl_cu12 $VSITE/nixl 2>/dev/null; \
+    pip install grpcio protobuf 2>/dev/null; \
+    echo "modelexpress + nixl installed"
+
+# Environment for RDMA
+ENV UCX_TLS="self,sm,rc,cuda_copy,gdr_copy,tcp" \
+    UCX_IB_GID_INDEX="3" \
+    NIXL_LOG_LEVEL="INFO" \
+    MODEL_EXPRESS_URL="modelexpress-server:8001" \
+    OMPI_MCA_pml="ob1" \
+    OMPI_MCA_btl="tcp,self,vader"
+
+WORKDIR /opt/verl

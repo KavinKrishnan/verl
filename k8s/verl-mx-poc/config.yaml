@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: verl-mx-config
+  namespace: kavin
+data:
+  run_ppo.sh: |
+    #!/bin/bash
+    set -e
+
+    # Start Ray head on this node
+    ray start --head --port=6379 --dashboard-host=0.0.0.0
+
+    # Wait for workers to join
+    sleep 15
+
+    # Run verl PPO training with MX checkpoint engine
+    python3 -m verl.trainer.main_ppo \
+      data.train_files=@/config/train_data.yaml \
+      data.val_files=[] \
+      data.train_batch_size=4 \
+      data.val_batch_size=0 \
+      data.max_prompt_length=256 \
+      data.max_response_length=512 \
+      actor_rollout_ref.model.path=Qwen/Qwen2.5-1.5B \
+      actor_rollout_ref.actor.optim.lr=5e-7 \
+      actor_rollout_ref.rollout.name=vllm \
+      actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
+      actor_rollout_ref.rollout.checkpoint_engine.backend=mx \
+      actor_rollout_ref.rollout.checkpoint_engine.engine_kwargs.mx_server_url=modelexpress-server.kavin.svc.cluster.local:8001 \
+      actor_rollout_ref.rollout.checkpoint_engine.engine_kwargs.model_name=Qwen/Qwen2.5-1.5B \
+      algorithm.adv_estimator=grpo \
+      trainer.total_epochs=1 \
+      trainer.n_gpus_per_node=4 \
+      trainer.nnodes=1 \
+      trainer.save_freq=-1
+
+  train_data.yaml: |
+    - parquet_files: https://huggingface.co/datasets/PrimeIntellect/verifiable-coding-problems/resolve/main/data/train-00000-of-00001.parquet
+      total_num_rows: 100

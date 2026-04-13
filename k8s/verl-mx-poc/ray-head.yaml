@@ -1,0 +1,147 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: verl-mx-head
+  namespace: kavin
+  labels:
+    app: verl-mx-head
+spec:
+  replicas: 1
+  serviceName: verl-mx-head
+  selector:
+    matchLabels:
+      app: verl-mx-head
+  template:
+    metadata:
+      labels:
+        app: verl-mx-head
+      annotations:
+        networking.gke.io/default-interface: eth0
+        networking.gke.io/interfaces: |
+          [
+            {"interfaceName":"eth0","network":"default"},
+            {"interfaceName":"rdma0","network":"rdma-0"},
+            {"interfaceName":"rdma1","network":"rdma-1"},
+            {"interfaceName":"rdma2","network":"rdma-2"},
+            {"interfaceName":"rdma3","network":"rdma-3"}
+          ]
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: head
+          image: nvcr.io/nvidian/dynamo-dev/verl-mx:latest
+          command: ["/bin/bash", "/config/run_ppo.sh"]
+          securityContext:
+            privileged: true
+          resources:
+            claims:
+              - name: compute-domain-channel
+            limits:
+              nvidia.com/gpu: "4"
+              networking.gke.io.networks/rdma-0: "1"
+              networking.gke.io.networks/rdma-1: "1"
+              networking.gke.io.networks/rdma-2: "1"
+              networking.gke.io.networks/rdma-3: "1"
+            requests:
+              nvidia.com/gpu: "4"
+          env:
+            - name: MODEL_EXPRESS_URL
+              value: "modelexpress-server.kavin.svc.cluster.local:8001"
+            - name: UCX_TLS
+              value: "self,sm,rc,cuda_copy,gdr_copy,tcp"
+            - name: UCX_IB_GID_INDEX
+              value: "3"
+            - name: NIXL_LOG_LEVEL
+              value: "INFO"
+            - name: NVIDIA_GDRCOPY
+              value: "1"
+            - name: OMPI_MCA_pml
+              value: "ob1"
+            - name: OMPI_MCA_btl
+              value: "tcp,self,vader"
+            - name: NCCL_SOCKET_IFNAME
+              value: "eth0"
+            - name: GLOO_SOCKET_IFNAME
+              value: "eth0"
+            - name: HF_HOME
+              value: "/models/hf_home"
+            - name: RAY_ADDRESS
+              value: "auto"
+          volumeMounts:
+            - name: shared-model-cache
+              mountPath: /models
+            - name: config
+              mountPath: /config
+            - name: dshm
+              mountPath: /dev/shm
+            - name: infiniband
+              mountPath: /dev/infiniband
+      volumes:
+        - name: shared-model-cache
+          persistentVolumeClaim:
+            claimName: shared-model-cache
+        - name: config
+          configMap:
+            name: verl-mx-config
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+        - name: infiniband
+          hostPath:
+            path: /dev/infiniband
+            type: DirectoryOrCreate
+      resourceClaims:
+        - name: compute-domain-channel
+          resourceClaimTemplateName: kavin-compute-domain-channel
+      imagePullSecrets:
+        - name: nvcr-imagepullsecret
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        nvidia.com/gpu.product: NVIDIA-GB200
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: cloud.google.com/gke-nodepool
+                    operator: In
+                    values:
+                      - customer-gpu-w0e
+                      - customer-gpu-o7v
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "dedicated"
+          operator: "Equal"
+          value: "user-workload"
+          effect: "NoSchedule"
+        - key: "dedicated"
+          operator: "Equal"
+          value: "user-workload"
+          effect: "NoExecute"
+        - key: "kubernetes.io/arch"
+          operator: "Exists"
+          effect: "NoSchedule"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: verl-mx-head
+  namespace: kavin
+spec:
+  selector:
+    app: verl-mx-head
+  ports:
+    - name: ray-client
+      port: 10001
+      targetPort: 10001
+    - name: ray-dashboard
+      port: 8265
+      targetPort: 8265
+    - name: ray-gcs
+      port: 6379
+      targetPort: 6379
+  clusterIP: None
