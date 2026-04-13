@@ -40,18 +40,23 @@ ENV PATH="/opt/ucx-install/bin:$PATH" \
 # NIXL — NVIDIA Inference tranXfer Library
 RUN git clone --depth 1 -b v1.0.1 https://github.com/ai-dynamo/nixl.git /opt/nixl-src \
     && cd /opt/nixl-src \
+    && mkdir -p /opt/nixl-install \
     && meson setup build \
         --prefix=/opt/nixl-install \
         -Ducx_path=/opt/ucx-install \
         -Denable_plugins=UCX \
     && cd build \
     && ninja -j2 \
-    && ninja install \
-    && cd /opt/nixl-src \
+    && ninja install
+
+# NIXL Python bindings
+RUN cd /opt/nixl-src \
     && python3 -m pip install --break-system-packages --no-build-isolation . || \
-       (echo "pip install failed, copying manually" && \
+       (echo "pip install failed, copying binding manually" && \
         mkdir -p /usr/local/lib/python3.12/dist-packages/nixl && \
-        cp -r build/src/bindings/python/* /usr/local/lib/python3.12/dist-packages/nixl/ 2>/dev/null; true)
+        cp -r build/src/bindings/python/* /usr/local/lib/python3.12/dist-packages/nixl/ 2>/dev/null; \
+        cp build/src/bindings/python/*.so /usr/local/lib/python3.12/dist-packages/nixl/ 2>/dev/null; \
+        true)
 
 # ModelExpress Python client
 RUN python3 -m pip install --break-system-packages --no-deps \
