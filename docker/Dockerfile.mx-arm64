@@ -38,7 +38,7 @@ ENV PATH="/opt/ucx-install/bin:$PATH" \
     CMAKE_PREFIX_PATH="/opt/ucx-install:$CMAKE_PREFIX_PATH"
 
 # NIXL — NVIDIA Inference tranXfer Library
-RUN git clone --depth 1 -b v1.0.1 https://github.com/ai-dynamo/nixl.git /opt/nixl-src \
+RUN git clone --depth 1 https://github.com/ai-dynamo/nixl.git /opt/nixl-src \
     && cd /opt/nixl-src \
     && mkdir -p /opt/nixl-install \
     && meson setup build \
