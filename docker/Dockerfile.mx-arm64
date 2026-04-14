@@ -92,13 +92,12 @@ RUN pip install vllm
 # Reinstall CUDA torch — vLLM ARM64 wheel pulls CPU-only torch from PyPI
 RUN pip install torch --index-url https://download.pytorch.org/whl/cu128 --force-reinstall --no-deps
 
-# flash_attn stub for ARM64 (no pre-built wheels available)
-# Creates a minimal package that satisfies the import but falls back to SDPA
-RUN mkdir -p /tmp/flash_attn_stub/flash_attn && \
-    echo "# flash_attn stub for ARM64" > /tmp/flash_attn_stub/flash_attn/__init__.py && \
-    echo "__version__ = '2.7.0'" >> /tmp/flash_attn_stub/flash_attn/__init__.py && \
-    echo "from setuptools import setup; setup(name='flash-attn', version='2.7.0', packages=['flash_attn'])" > /tmp/flash_attn_stub/setup.py && \
-    pip install /tmp/flash_attn_stub && rm -rf /tmp/flash_attn_stub
+# flash_attn stub for ARM64 (no pre-built wheels, raises on actual use to force SDPA fallback)
+RUN mkdir -p /tmp/fa/flash_attn && \
+    printf '__version__ = "2.7.0"\ndef flash_attn_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef pad_input(*a, **k): raise RuntimeError("flash_attn stub")\ndef unpad_input(*a, **k): raise RuntimeError("flash_attn stub")\n' \
+    > /tmp/fa/flash_attn/__init__.py && \
+    printf 'from setuptools import setup; setup(name="flash-attn", version="2.7.0", packages=["flash_attn"])\n' > /tmp/fa/setup.py && \
+    pip install /tmp/fa && rm -rf /tmp/fa
 
 # Install verl from our branch with MX checkpoint engine
 WORKDIR /opt/verl
