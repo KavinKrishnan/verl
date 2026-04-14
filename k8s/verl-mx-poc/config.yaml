@@ -11,17 +11,8 @@ data:
     # Start Ray head on this node
     ray start --head --port=6379 --dashboard-host=0.0.0.0
 
-    # Prepare dataset with verl-expected schema (prompt column with chat format)
-    python3 << 'DATASET_EOF'
-from datasets import load_dataset, Dataset
-ds = load_dataset("openai/gsm8k", "main", split="train[:200]")
-rows = []
-for row in ds:
-    rows.append({"prompt": [{"role": "user", "content": row["question"]}], "reward_model": {"ground_truth": row["answer"]}})
-out = Dataset.from_list(rows)
-out.to_parquet("/tmp/gsm8k_verl.parquet")
-print("Dataset saved:", len(out), "rows")
-DATASET_EOF
+    # Prepare dataset
+    python3 /config/prep_data.py
 
     # Wait for workers to join
     sleep 15
@@ -62,5 +53,15 @@ DATASET_EOF
       trainer.nnodes=1 \
       trainer.save_freq=-1
 
-  train_data.yaml: |
-    - parquet_files: hf://datasets/openai/gsm8k/main/train-00000-of-00001.parquet
+  prep_data.py: |
+    from datasets import load_dataset, Dataset
+    ds = load_dataset("openai/gsm8k", "main", split="train[:200]")
+    rows = []
+    for row in ds:
+        rows.append({
+            "prompt": [{"role": "user", "content": row["question"]}],
+            "reward_model": {"ground_truth": row["answer"]},
+        })
+    out = Dataset.from_list(rows)
+    out.to_parquet("/tmp/gsm8k_verl.parquet")
+    print("Dataset saved:", len(out), "rows")
