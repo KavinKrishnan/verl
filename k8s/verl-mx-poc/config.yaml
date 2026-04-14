@@ -11,13 +11,21 @@ data:
     # Start Ray head on this node
     ray start --head --port=6379 --dashboard-host=0.0.0.0
 
+    # Prepare dataset
+    python3 -c "
+from datasets import load_dataset
+ds = load_dataset('openai/gsm8k', 'main', split='train')
+ds.to_parquet('/tmp/gsm8k_train.parquet')
+print(f'Dataset saved: {len(ds)} rows')
+"
+
     # Wait for workers to join
     sleep 15
 
     # Run verl PPO training with MX checkpoint engine
     python3 -m verl.trainer.main_ppo \
       algorithm.adv_estimator=grpo \
-      data.train_files=hf://datasets/openai/gsm8k/main/train-00000-of-00001.parquet \
+      data.train_files=/tmp/gsm8k_train.parquet \
       data.val_files=[] \
       data.train_batch_size=8 \
       data.max_prompt_length=256 \
