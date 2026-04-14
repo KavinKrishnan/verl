@@ -10,7 +10,6 @@ data:
 
     # Diagnostic
     python3 -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available(), 'devices:', torch.cuda.device_count() if torch.cuda.is_available() else 0)"
-    nvidia-smi -L 2>/dev/null || echo "nvidia-smi not found"
 
     # Start Ray head on this node
     ray start --head --port=6379 --dashboard-host=0.0.0.0
