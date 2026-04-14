@@ -17,7 +17,7 @@ data:
     # Run verl PPO training with MX checkpoint engine
     python3 -m verl.trainer.main_ppo \
       algorithm.adv_estimator=grpo \
-      data.train_files=/config/train_data.yaml \
+      data.train_files=hf://datasets/openai/gsm8k/main/train-00000-of-00001.parquet \
       data.val_files=[] \
       data.train_batch_size=8 \
       data.max_prompt_length=256 \
