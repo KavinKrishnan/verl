@@ -86,10 +86,7 @@ COPY --from=builder /opt/nixl-install /opt/nixl-install
 ENV PATH="/opt/ucx-install/bin:$PATH" \
     LD_LIBRARY_PATH="/opt/ucx-install/lib:/opt/nixl-install/lib:/opt/nixl-install/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH"
 
-# Install PyTorch (ARM64)
-RUN pip install torch --index-url https://download.pytorch.org/whl/cu128
-
-# Install vLLM
+# Install vLLM (brings PyTorch + CUDA as dependencies)
 RUN pip install vllm
 
 # Install verl from our branch with MX checkpoint engine
