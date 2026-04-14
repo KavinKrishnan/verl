@@ -27,8 +27,7 @@ data:
       actor_rollout_ref.rollout.name=vllm \
       actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
       actor_rollout_ref.rollout.checkpoint_engine.backend=mx \
-      actor_rollout_ref.rollout.checkpoint_engine.engine_kwargs.mx_server_url=modelexpress-server.kavin.svc.cluster.local:8001 \
-      actor_rollout_ref.rollout.checkpoint_engine.engine_kwargs.model_name=Qwen/Qwen2.5-1.5B \
+      '+actor_rollout_ref.rollout.checkpoint_engine.engine_kwargs={mx_server_url: "modelexpress-server.kavin.svc.cluster.local:8001", model_name: "Qwen/Qwen2.5-1.5B"}' \
       algorithm.adv_estimator=grpo \
       trainer.total_epochs=1 \
       trainer.n_gpus_per_node=4 \
