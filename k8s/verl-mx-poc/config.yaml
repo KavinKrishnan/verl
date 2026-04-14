@@ -11,8 +11,17 @@ data:
     # Start Ray head on this node
     ray start --head --port=6379 --dashboard-host=0.0.0.0
 
-    # Prepare dataset
-    python3 -c "from datasets import load_dataset; ds = load_dataset('openai/gsm8k', 'main', split='train'); ds.to_parquet('/tmp/gsm8k_train.parquet'); print('Dataset saved:', len(ds), 'rows')"
+    # Prepare dataset with verl-expected schema (prompt column with chat format)
+    python3 << 'DATASET_EOF'
+from datasets import load_dataset, Dataset
+ds = load_dataset("openai/gsm8k", "main", split="train[:200]")
+rows = []
+for row in ds:
+    rows.append({"prompt": [{"role": "user", "content": row["question"]}], "reward_model": {"ground_truth": row["answer"]}})
+out = Dataset.from_list(rows)
+out.to_parquet("/tmp/gsm8k_verl.parquet")
+print("Dataset saved:", len(out), "rows")
+DATASET_EOF
 
     # Wait for workers to join
     sleep 15
@@ -20,7 +29,7 @@ data:
     # Run verl PPO training with MX checkpoint engine
     python3 -m verl.trainer.main_ppo \
       algorithm.adv_estimator=grpo \
-      'data.train_files=[/tmp/gsm8k_train.parquet]' \
+      'data.train_files=[/tmp/gsm8k_verl.parquet]' \
       data.val_files=[] \
       data.train_batch_size=8 \
       data.max_prompt_length=256 \
