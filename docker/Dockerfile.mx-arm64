@@ -92,12 +92,14 @@ RUN pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
 # Install vLLM (should use the existing CUDA torch)
 RUN pip install vllm==0.19.0
 
-# flash_attn stub for ARM64 (no pre-built wheels; stubs raise on actual use, forcing SDPA fallback)
+# flash_attn stub for ARM64 (no pre-built wheels; stubs satisfy imports but raise on actual use)
 RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
-    mkdir -p $SITE/flash_attn $SITE/flash_attn-2.7.0.dist-info && \
-    printf '__version__ = "2.7.0"\ndef flash_attn_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("flash_attn stub")\n' > $SITE/flash_attn/__init__.py && \
-    printf 'def pad_input(*a, **k): raise RuntimeError("flash_attn stub")\ndef unpad_input(*a, **k): raise RuntimeError("flash_attn stub")\ndef index_first_axis(*a, **k): raise RuntimeError("flash_attn stub")\n' > $SITE/flash_attn/bert_padding.py && \
-    printf 'def flash_attn_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("flash_attn stub")\n' > $SITE/flash_attn/flash_attn_interface.py && \
+    mkdir -p $SITE/flash_attn/ops $SITE/flash_attn-2.7.0.dist-info && \
+    printf '__version__ = "2.7.0"\ndef flash_attn_func(*a, **k): raise RuntimeError("flash_attn stub - use SDPA")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("flash_attn stub - use SDPA")\n' > $SITE/flash_attn/__init__.py && \
+    printf 'def pad_input(*a, **k): raise RuntimeError("stub")\ndef unpad_input(*a, **k): raise RuntimeError("stub")\ndef index_first_axis(*a, **k): raise RuntimeError("stub")\ndef rearrange(*a, **k): raise RuntimeError("stub")\n' > $SITE/flash_attn/bert_padding.py && \
+    printf 'def flash_attn_func(*a, **k): raise RuntimeError("stub")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("stub")\n' > $SITE/flash_attn/flash_attn_interface.py && \
+    printf '# ops stub\n' > $SITE/flash_attn/ops/__init__.py && \
+    printf 'def fused_dense_func(*a, **k): raise RuntimeError("stub")\nclass FusedDense: pass\nclass ColumnParallelLinear: pass\nclass RowParallelLinear: pass\n' > $SITE/flash_attn/ops/fused_dense.py && \
     printf 'Metadata-Version: 2.1\nName: flash-attn\nVersion: 2.7.0\n' > $SITE/flash_attn-2.7.0.dist-info/METADATA && \
     printf 'flash_attn\n' > $SITE/flash_attn-2.7.0.dist-info/top_level.txt
 

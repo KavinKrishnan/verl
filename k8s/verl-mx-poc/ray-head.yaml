@@ -48,6 +48,10 @@ spec:
           env:
             - name: TRANSFORMERS_ATTN_IMPLEMENTATION
               value: "sdpa"
+            - name: VLLM_ATTENTION_BACKEND
+              value: "FLASH_ATTN"
+            - name: VLLM_WORKER_MULTIPROC_METHOD
+              value: "spawn"
             - name: MODEL_EXPRESS_URL
               value: "modelexpress-server.kavin.svc.cluster.local:8001"
             - name: UCX_TLS
