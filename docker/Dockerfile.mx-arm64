@@ -86,18 +86,21 @@ COPY --from=builder /opt/nixl-install /opt/nixl-install
 ENV PATH="/opt/ucx-install/bin:$PATH" \
     LD_LIBRARY_PATH="/opt/ucx-install/lib:/opt/nixl-install/lib:/opt/nixl-install/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH"
 
-# Install vLLM first (may pull CPU torch on ARM64)
-RUN pip install vllm
+# Install CUDA torch first so vLLM doesn't pull CPU-only version
+RUN pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
 
-# Reinstall CUDA torch — vLLM ARM64 wheel pulls CPU-only torch from PyPI
-RUN pip install torch --index-url https://download.pytorch.org/whl/cu128 --force-reinstall --no-deps
+# Install vLLM (should use the existing CUDA torch)
+RUN pip install vllm==0.19.0
 
-# flash_attn stub for ARM64 (no pre-built wheels, raises on actual use to force SDPA fallback)
-RUN mkdir -p /tmp/fa/flash_attn && \
-    printf '__version__ = "2.7.0"\ndef flash_attn_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef pad_input(*a, **k): raise RuntimeError("flash_attn stub")\ndef unpad_input(*a, **k): raise RuntimeError("flash_attn stub")\n' \
-    > /tmp/fa/flash_attn/__init__.py && \
-    printf 'from setuptools import setup; setup(name="flash-attn", version="2.7.0", packages=["flash_attn"])\n' > /tmp/fa/setup.py && \
-    pip install /tmp/fa && rm -rf /tmp/fa
+# flash_attn stub for ARM64 (no pre-built wheels; stubs raise on actual use, forcing SDPA fallback)
+RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
+    mkdir -p $SITE/flash_attn && \
+    printf '__version__ = "2.7.0"\ndef flash_attn_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("flash_attn stub")\n' > $SITE/flash_attn/__init__.py && \
+    printf 'def pad_input(*a, **k): raise RuntimeError("flash_attn stub")\ndef unpad_input(*a, **k): raise RuntimeError("flash_attn stub")\ndef index_first_axis(*a, **k): raise RuntimeError("flash_attn stub")\n' > $SITE/flash_attn/bert_padding.py && \
+    printf 'def flash_attn_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("flash_attn stub")\n' > $SITE/flash_attn/flash_attn_interface.py && \
+    printf 'Metadata-Version: 2.1\nName: flash-attn\nVersion: 2.7.0\n' > $SITE/flash_attn-2.7.0.dist-info/METADATA && \
+    mkdir -p $SITE/flash_attn-2.7.0.dist-info && \
+    printf 'flash_attn\n' > $SITE/flash_attn-2.7.0.dist-info/top_level.txt
 
 # Install verl from our branch with MX checkpoint engine
 WORKDIR /opt/verl
