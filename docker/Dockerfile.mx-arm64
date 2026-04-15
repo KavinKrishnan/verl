@@ -94,12 +94,11 @@ RUN pip install vllm==0.19.0
 
 # flash_attn stub for ARM64 (no pre-built wheels; stubs raise on actual use, forcing SDPA fallback)
 RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
-    mkdir -p $SITE/flash_attn && \
+    mkdir -p $SITE/flash_attn $SITE/flash_attn-2.7.0.dist-info && \
     printf '__version__ = "2.7.0"\ndef flash_attn_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("flash_attn stub")\n' > $SITE/flash_attn/__init__.py && \
     printf 'def pad_input(*a, **k): raise RuntimeError("flash_attn stub")\ndef unpad_input(*a, **k): raise RuntimeError("flash_attn stub")\ndef index_first_axis(*a, **k): raise RuntimeError("flash_attn stub")\n' > $SITE/flash_attn/bert_padding.py && \
     printf 'def flash_attn_func(*a, **k): raise RuntimeError("flash_attn stub")\ndef flash_attn_varlen_func(*a, **k): raise RuntimeError("flash_attn stub")\n' > $SITE/flash_attn/flash_attn_interface.py && \
     printf 'Metadata-Version: 2.1\nName: flash-attn\nVersion: 2.7.0\n' > $SITE/flash_attn-2.7.0.dist-info/METADATA && \
-    mkdir -p $SITE/flash_attn-2.7.0.dist-info && \
     printf 'flash_attn\n' > $SITE/flash_attn-2.7.0.dist-info/top_level.txt
 
 # Install verl from our branch with MX checkpoint engine
