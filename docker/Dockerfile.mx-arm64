@@ -58,10 +58,6 @@ RUN cd /opt/nixl-src \
         cp build/src/bindings/python/*.so /usr/local/lib/python3.12/dist-packages/nixl/ 2>/dev/null; \
         true)
 
-# Build flash_attn from source in builder (has nvcc)
-RUN pip install --break-system-packages torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128 && \
-    MAX_JOBS=2 FLASH_ATTENTION_FORCE_BUILD=TRUE pip install --break-system-packages flash-attn --no-build-isolation
-
 # ModelExpress Python client
 RUN python3 -m pip install --break-system-packages --no-deps \
     "modelexpress @ git+https://github.com/ai-dynamo/modelexpress.git@kavink/RL#subdirectory=modelexpress_client/python" \
@@ -70,7 +66,7 @@ RUN python3 -m pip install --break-system-packages --no-deps \
 # =============================================================================
 # Stage 2: Runtime — verl + vLLM + MX + NIXL
 # =============================================================================
-FROM nvcr.io/nvidia/cuda:12.8.1-runtime-ubuntu24.04
+FROM nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -83,10 +79,9 @@ RUN ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
 
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
-# Copy UCX, NIXL, and flash_attn from builder
+# Copy UCX and NIXL from builder
 COPY --from=builder /opt/ucx-install /opt/ucx-install
 COPY --from=builder /opt/nixl-install /opt/nixl-install
-COPY --from=builder /usr/local/lib/python3.12/dist-packages/flash_attn /usr/local/lib/python3.12/dist-packages/flash_attn
 
 ENV PATH="/opt/ucx-install/bin:$PATH" \
     LD_LIBRARY_PATH="/opt/ucx-install/lib:/opt/nixl-install/lib:/opt/nixl-install/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH"
@@ -97,7 +92,9 @@ RUN pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
 # Install vLLM (should use the existing CUDA torch)
 RUN pip install vllm==0.19.0
 
-# flash_attn already copied from builder via COPY --from=builder above
+# Build flash_attn from source (runtime has nvcc from devel image)
+RUN MAX_JOBS=2 FLASH_ATTENTION_FORCE_BUILD=TRUE pip install flash-attn --no-build-isolation || \
+    echo "WARNING: flash_attn build failed"
 
 # Install verl from our branch with MX checkpoint engine
 WORKDIR /opt/verl
