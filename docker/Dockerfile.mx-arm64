@@ -66,7 +66,7 @@ RUN python3 -m pip install --break-system-packages --no-deps \
 # =============================================================================
 # Stage 2: Runtime — verl + vLLM + MX + NIXL
 # =============================================================================
-FROM nvcr.io/nvidia/cuda:12.8.1-runtime-ubuntu24.04
+FROM nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
