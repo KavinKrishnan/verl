@@ -66,7 +66,7 @@ RUN python3 -m pip install --break-system-packages --no-deps \
 # =============================================================================
 # Stage 2: Runtime — verl + vLLM + MX + NIXL
 # =============================================================================
-FROM nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu24.04
+FROM nvcr.io/nvidia/cuda:12.8.1-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -92,9 +92,27 @@ RUN pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
 # Install vLLM (should use the existing CUDA torch)
 RUN pip install vllm==0.19.0
 
-# Build flash_attn from source (runtime has nvcc from devel image)
-RUN MAX_JOBS=2 FLASH_ATTENTION_FORCE_BUILD=TRUE pip install flash-attn --no-build-isolation || \
-    echo "WARNING: flash_attn build failed"
+# flash_attn compat shim for ARM64 (source build takes 18+ hours under QEMU)
+# Creates a package that delegates to verl's flash_attn_compat for bert_padding/ops
+# and provides stub CUDA functions that route to PyTorch SDPA
+RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
+    mkdir -p $SITE/flash_attn/ops/triton $SITE/flash_attn/layers $SITE/flash_attn-2.7.0.dist-info && \
+    echo '__version__ = "2.7.0"' > $SITE/flash_attn/__init__.py && \
+    echo 'from verl.utils.flash_attn_compat import pad_input, unpad_input, index_first_axis, rearrange' > $SITE/flash_attn/bert_padding.py && \
+    echo 'def flash_attn_func(*a, **k): raise RuntimeError("Use SDPA on ARM64")' >> $SITE/flash_attn/__init__.py && \
+    echo 'def flash_attn_varlen_func(*a, **k): raise RuntimeError("Use SDPA on ARM64")' >> $SITE/flash_attn/__init__.py && \
+    echo '# ops' > $SITE/flash_attn/ops/__init__.py && \
+    echo '# triton ops' > $SITE/flash_attn/ops/triton/__init__.py && \
+    echo 'def apply_rotary(*a, **k): raise RuntimeError("Use SDPA on ARM64")' > $SITE/flash_attn/ops/triton/rotary.py && \
+    echo 'def cross_entropy_loss(*a, **k): raise RuntimeError("Use SDPA on ARM64")' > $SITE/flash_attn/ops/triton/cross_entropy.py && \
+    echo 'class RMSNorm: pass' > $SITE/flash_attn/ops/triton/layer_norm.py && \
+    echo 'def fused_dense_func(*a, **k): pass' > $SITE/flash_attn/ops/fused_dense.py && \
+    echo '# layers' > $SITE/flash_attn/layers/__init__.py && \
+    echo 'class RotaryEmbedding: pass' > $SITE/flash_attn/layers/rotary.py && \
+    echo 'def flash_attn_func(*a, **k): raise RuntimeError("Use SDPA")' > $SITE/flash_attn/flash_attn_interface.py && \
+    echo 'def flash_attn_varlen_func(*a, **k): raise RuntimeError("Use SDPA")' >> $SITE/flash_attn/flash_attn_interface.py && \
+    printf 'Metadata-Version: 2.1\nName: flash-attn\nVersion: 2.7.0\n' > $SITE/flash_attn-2.7.0.dist-info/METADATA && \
+    echo 'flash_attn' > $SITE/flash_attn-2.7.0.dist-info/top_level.txt
 
 # Install verl from our branch with MX checkpoint engine
 WORKDIR /opt/verl
