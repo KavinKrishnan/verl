@@ -52,6 +52,12 @@ spec:
               value: "FLASH_ATTN"
             - name: VLLM_WORKER_MULTIPROC_METHOD
               value: "spawn"
+            - name: WANDB_MODE
+              value: "disabled"
+            - name: VLLM_USE_V1
+              value: "1"
+            - name: VLLM_ENABLE_V1_MULTIPROCESSING
+              value: "0"
             - name: MODEL_EXPRESS_URL
               value: "modelexpress-server.kavin.svc.cluster.local:8001"
             - name: UCX_TLS
