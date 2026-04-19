@@ -35,6 +35,25 @@ def index_first_axis(x, indices):
     return x[indices]
 
 
+def cross_entropy_loss(logits, labels, smoothing=0.0, **kwargs):
+    """Fallback cross-entropy loss using PyTorch (replaces flash_attn Triton kernel).
+
+    Args:
+        logits: (batch * seqlen, vocab_size) or (batch, seqlen, vocab_size)
+        labels: (batch * seqlen,) or (batch, seqlen)
+    Returns:
+        (losses, z_losses) tuple where losses is per-token CE and z_losses is aux loss
+    """
+    if logits.dim() == 3:
+        logits = logits.view(-1, logits.size(-1))
+    if labels.dim() > 1:
+        labels = labels.view(-1)
+
+    losses = F.cross_entropy(logits, labels, reduction="none", label_smoothing=smoothing)
+    z_losses = torch.zeros_like(losses)
+    return losses, z_losses
+
+
 def rearrange(x, pattern, **kwargs):
     """Minimal rearrange for 'b s ... -> (b s) ...' pattern."""
     if pattern == "b s ... -> (b s) ...":

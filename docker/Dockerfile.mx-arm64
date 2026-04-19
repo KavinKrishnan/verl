@@ -104,7 +104,7 @@ RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
     echo '# ops' > $SITE/flash_attn/ops/__init__.py && \
     echo '# triton ops' > $SITE/flash_attn/ops/triton/__init__.py && \
     echo 'def apply_rotary(*a, **k): raise RuntimeError("Use SDPA on ARM64")' > $SITE/flash_attn/ops/triton/rotary.py && \
-    echo 'def cross_entropy_loss(*a, **k): raise RuntimeError("Use SDPA on ARM64")' > $SITE/flash_attn/ops/triton/cross_entropy.py && \
+    echo 'from verl.utils.flash_attn_compat import cross_entropy_loss' > $SITE/flash_attn/ops/triton/cross_entropy.py && \
     echo 'class RMSNorm: pass' > $SITE/flash_attn/ops/triton/layer_norm.py && \
     echo 'def fused_dense_func(*a, **k): pass' > $SITE/flash_attn/ops/fused_dense.py && \
     echo '# layers' > $SITE/flash_attn/layers/__init__.py && \
