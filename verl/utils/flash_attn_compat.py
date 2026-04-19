@@ -43,21 +43,38 @@ def rearrange(x, pattern, **kwargs):
 
 
 def flash_attn_func(q, k, v, dropout_p=0.0, softmax_scale=None, causal=False, **kwargs):
-    """Fallback flash_attn_func using PyTorch SDPA.
+    """Fallback flash_attn_func using PyTorch SDPA. Handles GQA.
 
-    q, k, v: (batch, seqlen, nheads, headdim)
-    Returns: (batch, seqlen, nheads, headdim)
+    q: (batch, seqlen, nheads_q, headdim)
+    k, v: (batch, seqlen, nheads_kv, headdim)
+    Returns: (batch, seqlen, nheads_q, headdim)
     """
-    q = q.transpose(1, 2)  # (B, H, S, D)
-    k = k.transpose(1, 2)
+    nheads_q = q.shape[2]
+    nheads_kv = k.shape[2]
+    n_rep = nheads_q // nheads_kv
+
+    q = q.transpose(1, 2)  # (B, Hq, S, D)
+    k = k.transpose(1, 2)  # (B, Hkv, S, D)
     v = v.transpose(1, 2)
+
+    if n_rep > 1:
+        k = k.repeat_interleave(n_rep, dim=1)
+        v = v.repeat_interleave(n_rep, dim=1)
+
     out = F.scaled_dot_product_attention(
         q, k, v,
         dropout_p=dropout_p,
         is_causal=causal,
         scale=softmax_scale,
     )
-    return out.transpose(1, 2)  # (B, S, H, D)
+    return out.transpose(1, 2)  # (B, S, Hq, D)
+
+
+def _repeat_kv(x, n_rep):
+    """Repeat KV heads to match Q heads for GQA. x: (1, H_kv, S, D) → (1, H_q, S, D)."""
+    if n_rep == 1:
+        return x
+    return x.repeat_interleave(n_rep, dim=1)
 
 
 def flash_attn_varlen_func(
@@ -66,24 +83,28 @@ def flash_attn_varlen_func(
     max_seqlen_q, max_seqlen_k,
     dropout_p=0.0, softmax_scale=None, causal=False, **kwargs
 ):
-    """Fallback flash_attn_varlen_func using PyTorch SDPA with manual padding.
+    """Fallback flash_attn_varlen_func using PyTorch SDPA.
 
-    q, k, v: (total_tokens, nheads, headdim) — variable-length packed tensors
-    cu_seqlens_q/k: cumulative sequence lengths (batch_size+1,)
-    Returns: (total_tokens, nheads, headdim)
+    Handles GQA (grouped-query attention) where Q has more heads than K/V.
+    q: (total_tokens, nheads_q, headdim)
+    k, v: (total_tokens, nheads_kv, headdim)
     """
     batch_size = len(cu_seqlens_q) - 1
-    nheads = q.shape[1]
-    headdim = q.shape[2]
+    nheads_q = q.shape[1]
+    nheads_kv = k.shape[1]
+    n_rep = nheads_q // nheads_kv
 
     outputs = []
     for i in range(batch_size):
         start_q, end_q = cu_seqlens_q[i], cu_seqlens_q[i + 1]
         start_k, end_k = cu_seqlens_k[i], cu_seqlens_k[i + 1]
 
-        qi = q[start_q:end_q].unsqueeze(0).transpose(1, 2)  # (1, H, Sq, D)
-        ki = k[start_k:end_k].unsqueeze(0).transpose(1, 2)
+        qi = q[start_q:end_q].unsqueeze(0).transpose(1, 2)  # (1, Hq, Sq, D)
+        ki = k[start_k:end_k].unsqueeze(0).transpose(1, 2)  # (1, Hkv, Sk, D)
         vi = v[start_k:end_k].unsqueeze(0).transpose(1, 2)
+
+        ki = _repeat_kv(ki, n_rep)  # (1, Hq, Sk, D)
+        vi = _repeat_kv(vi, n_rep)
 
         oi = F.scaled_dot_product_attention(
             qi, ki, vi,
@@ -91,6 +112,6 @@ def flash_attn_varlen_func(
             is_causal=causal,
             scale=softmax_scale,
         )
-        outputs.append(oi.transpose(1, 2).squeeze(0))  # (Sq, H, D)
+        outputs.append(oi.transpose(1, 2).squeeze(0))
 
     return torch.cat(outputs, dim=0)
