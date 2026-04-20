@@ -120,13 +120,18 @@ RUN pip install -e ".[gpu]" 2>/dev/null || pip install -e . 2>/dev/null || \
     pip install ray transformers datasets accelerate omegaconf hydra-core \
     tensordict pydantic pyzmq aiohttp httpx cupy-cuda12x
 
-# Install MX + NIXL into the same environment
+# Install MX client directly via pip (avoids copy path issues)
+RUN pip install --no-deps \
+    "modelexpress @ git+https://github.com/ai-dynamo/modelexpress.git@kavink/RL#subdirectory=modelexpress_client/python" && \
+    pip install grpcio protobuf
+
+# Install NIXL into the environment
 RUN VSITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
-    cp -r /usr/local/lib/python3.12/dist-packages/modelexpress $VSITE/modelexpress 2>/dev/null; \
     cp -r /opt/nixl-install/lib/python3/dist-packages/nixl_cu12 $VSITE/nixl_cu12 2>/dev/null; \
-    ln -sf nixl_cu12 $VSITE/nixl 2>/dev/null; \
-    pip install grpcio protobuf 2>/dev/null; \
-    echo "modelexpress + nixl installed"
+    ln -sf $VSITE/nixl_cu12 $VSITE/nixl 2>/dev/null; \
+    python3 -c "import modelexpress; print('MX:', modelexpress.__file__)" && \
+    python3 -c "import nixl; print('NIXL:', nixl.__file__)" && \
+    echo "modelexpress + nixl verified"
 
 # Environment for RDMA
 ENV UCX_TLS="self,sm,rc,cuda_copy,gdr_copy,tcp" \
