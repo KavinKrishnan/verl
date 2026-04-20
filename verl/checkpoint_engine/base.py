@@ -423,8 +423,11 @@ class CheckpointEngineManager:
         rollout = RayWorkerGroup(worker_handles=workers, ray_cls_with_init=RayClassWithInitArgs(cls=_worker_cls))
         trainer = self.trainer
 
-        # 3. sleep replicas to free kv_cache before weight sync (if free_cache_engine is enabled)
-        await self.sleep_replicas()
+        # 3. sleep replicas to free kv_cache before weight sync
+        # Skip for engines that don't need it (e.g. MX on high-memory GPUs)
+        skip_sleep = getattr(self.backend_cls, "skip_sleep_wake", False)
+        if not skip_sleep:
+            await self.sleep_replicas()
 
         # 4. build process group
         self.build_process_group(rollout)
@@ -438,8 +441,9 @@ class CheckpointEngineManager:
             + rollout.execute_checkpoint_engine(["finalize"] * rollout.world_size)
         )
 
-        # 7. resume replicas to recover kv_cache (for free_cache_engine scenarios)
-        await self.wake_up_replicas()
+        # 7. resume replicas to recover kv_cache
+        if not skip_sleep:
+            await self.wake_up_replicas()
 
         # 8. resume all unfinished requests for partial rollout
         await asyncio.gather(*[r.resume_generation() for r in self.replicas])

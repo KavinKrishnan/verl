@@ -219,6 +219,9 @@ class ReadOperation:
 class MxCheckpointEngine(CheckpointEngine):
     """ModelExpress checkpoint engine: NIXL RDMA + MX Server metadata coordination.
 
+    Note: skip_sleep_wake=True avoids vLLM multiproc crashes during sleep/wake
+    on platforms where GPU memory is sufficient (e.g. GB200 with 185 GB VRAM).
+
     The trainer publishes NIXL metadata to the MX Server so rollout workers can
     discover it without direct topology exchange. The data plane uses the same
     bucketed NIXL RDMA pattern as the NIXL checkpoint engine.
@@ -230,6 +233,8 @@ class MxCheckpointEngine(CheckpointEngine):
         rollout_dtype: dtype for received weights.
         model_name: Model name for MX Server source identity.
     """
+
+    skip_sleep_wake = True
 
     def __init__(
         self,
