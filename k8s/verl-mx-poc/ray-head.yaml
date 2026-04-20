@@ -58,6 +58,10 @@ spec:
               value: "1"
             - name: VLLM_ENABLE_V1_MULTIPROCESSING
               value: "0"
+            - name: MULTIPROCESSING_TRACKER_DISABLE
+              value: "1"
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
             - name: MODEL_EXPRESS_URL
               value: "modelexpress-server.kavin.svc.cluster.local:8001"
             - name: UCX_TLS

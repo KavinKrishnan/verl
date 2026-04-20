@@ -87,11 +87,11 @@ COPY --from=builder /opt/nixl-install /opt/nixl-install
 ENV PATH="/opt/ucx-install/bin:$PATH" \
     LD_LIBRARY_PATH="/opt/ucx-install/lib:/opt/nixl-install/lib:/opt/nixl-install/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH"
 
-# Install CUDA torch first so vLLM doesn't pull CPU-only version
-RUN pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
-
-# Install vLLM (should use the existing CUDA torch)
-RUN pip install vllm==0.19.0
+# Install vLLM 0.18.1 (avoids 0.19 multiproc resource_tracker crash on ARM64)
+# Let vLLM pull its own torch dependency, then reinstall CUDA version
+RUN pip install vllm==0.18.1
+RUN TORCH_VER=$(python3 -c "import torch; print(torch.__version__.split('+')[0])") && \
+    pip install torch==${TORCH_VER} --index-url https://download.pytorch.org/whl/cu128 --force-reinstall --no-deps
 
 # flash_attn compat shim for ARM64 (source build takes 18+ hours under QEMU)
 # Creates a package that delegates to verl's flash_attn_compat for bert_padding/ops
