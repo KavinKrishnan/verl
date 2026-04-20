@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: verl-mx-worker
+  namespace: kavin
+  labels:
+    app: verl-mx-worker
+spec:
+  replicas: 1
+  serviceName: verl-mx-worker
+  selector:
+    matchLabels:
+      app: verl-mx-worker
+  template:
+    metadata:
+      labels:
+        app: verl-mx-worker
+      annotations:
+        networking.gke.io/default-interface: eth0
+        networking.gke.io/interfaces: |
+          [
+            {"interfaceName":"eth0","network":"default"},
+            {"interfaceName":"rdma0","network":"rdma-0"},
+            {"interfaceName":"rdma1","network":"rdma-1"},
+            {"interfaceName":"rdma2","network":"rdma-2"},
+            {"interfaceName":"rdma3","network":"rdma-3"}
+          ]
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: worker
+          image: nvcr.io/nvidian/dynamo-dev/verl-mx:latest
+          command: ["bash", "-c", "ray start --address=verl-mx-head-0:6379 --block"]
+          securityContext:
+            privileged: true
+          resources:
+            claims:
+              - name: compute-domain-channel
+            limits:
+              nvidia.com/gpu: "4"
+              networking.gke.io.networks/rdma-0: "1"
+              networking.gke.io.networks/rdma-1: "1"
+              networking.gke.io.networks/rdma-2: "1"
+              networking.gke.io.networks/rdma-3: "1"
+            requests:
+              nvidia.com/gpu: "4"
+          env:
+            - name: TRANSFORMERS_ATTN_IMPLEMENTATION
+              value: "sdpa"
+            - name: MODEL_EXPRESS_URL
+              value: "modelexpress-server.kavin.svc.cluster.local:8001"
+            - name: UCX_TLS
+              value: "self,sm,rc,cuda_copy,gdr_copy,tcp"
+            - name: UCX_IB_GID_INDEX
+              value: "3"
+            - name: NIXL_LOG_LEVEL
+              value: "INFO"
+            - name: NVIDIA_GDRCOPY
+              value: "1"
+            - name: OMPI_MCA_pml
+              value: "ob1"
+            - name: OMPI_MCA_btl
+              value: "tcp,self,vader"
+            - name: NCCL_SOCKET_IFNAME
+              value: "eth0"
+            - name: GLOO_SOCKET_IFNAME
+              value: "eth0"
+            - name: HF_HOME
+              value: "/models/hf_home"
+            - name: VLLM_ATTENTION_BACKEND
+              value: "FLASH_ATTN"
+            - name: VLLM_WORKER_MULTIPROC_METHOD
+              value: "spawn"
+            - name: VLLM_ENABLE_V1_MULTIPROCESSING
+              value: "0"
+            - name: WANDB_MODE
+              value: "disabled"
+          volumeMounts:
+            - name: shared-model-cache
+              mountPath: /models
+            - name: dshm
+              mountPath: /dev/shm
+            - name: infiniband
+              mountPath: /dev/infiniband
+      volumes:
+        - name: shared-model-cache
+          persistentVolumeClaim:
+            claimName: shared-model-cache
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+        - name: infiniband
+          hostPath:
+            path: /dev/infiniband
+            type: DirectoryOrCreate
+      resourceClaims:
+        - name: compute-domain-channel
+          resourceClaimTemplateName: kavin-compute-domain-channel
+      imagePullSecrets:
+        - name: nvcr-imagepullsecret
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        nvidia.com/gpu.product: NVIDIA-GB200
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: cloud.google.com/gke-nodepool
+                    operator: In
+                    values:
+                      - customer-gpu-w0e
+                      - customer-gpu-o7v
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - verl-mx-head
+              topologyKey: kubernetes.io/hostname
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "dedicated"
+          operator: "Equal"
+          value: "user-workload"
+          effect: "NoSchedule"
+        - key: "dedicated"
+          operator: "Equal"
+          value: "user-workload"
+          effect: "NoExecute"
+        - key: "kubernetes.io/arch"
+          operator: "Exists"
+          effect: "NoSchedule"
