@@ -38,8 +38,13 @@ from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Generator
 from unittest.mock import patch
 
-with patch("importlib.metadata.distributions", return_value=[]):
-    import cupy as cp
+try:
+    with patch("importlib.metadata.distributions", return_value=[]):
+        import cupy as cp
+    HAS_CUPY = True
+except ImportError:
+    cp = None
+    HAS_CUPY = False
 
 import nixl._api as nixl_api
 import nixl._bindings as nixl_bindings
@@ -246,11 +251,14 @@ class MxCheckpointEngine(CheckpointEngine):
 
     def prepare(self) -> MxAgentMetadata:
         """Allocate send/recv buckets and register with NIXL."""
-        if self.device == "cuda":
+        if self.device == "cuda" and HAS_CUPY:
             send_buf = cp.zeros(self.bucket_size, dtype=cp.uint8)
             recv_buf = cp.zeros(self.bucket_size, dtype=cp.uint8)
             self.send_buf = torch.as_tensor(send_buf, dtype=torch.uint8)
             self.recv_buf = torch.as_tensor(recv_buf, dtype=torch.uint8)
+        elif self.device == "cuda":
+            self.send_buf = torch.zeros(self.bucket_size, dtype=torch.uint8, device="cuda")
+            self.recv_buf = torch.zeros(self.bucket_size, dtype=torch.uint8, device="cuda")
         else:
             self.send_buf = torch.zeros(self.bucket_size, dtype=torch.uint8, device=self.device, pin_memory=True)
             self.recv_buf = torch.zeros(self.bucket_size, dtype=torch.uint8, device=self.device, pin_memory=True)
