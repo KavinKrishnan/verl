@@ -52,7 +52,8 @@ data:
       actor_rollout_ref.ref.fsdp_config.param_offload=False \
       algorithm.use_kl_in_reward=False \
       trainer.critic_warmup=0 \
-      actor_rollout_ref.rollout.checkpoint_engine.backend=naive \
+      actor_rollout_ref.rollout.checkpoint_engine.backend=mx \
+      '+actor_rollout_ref.rollout.checkpoint_engine.engine_kwargs={mx_server_url: modelexpress-server.kavin.svc.cluster.local:8001, model_name: Qwen/Qwen2.5-1.5B}' \
       trainer.total_epochs=1 \
       trainer.total_training_steps=10 \
       trainer.n_gpus_per_node=4 \

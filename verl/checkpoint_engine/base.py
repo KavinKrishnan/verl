@@ -413,6 +413,13 @@ class CheckpointEngineManager:
             ray.get(self.trainer.update_weights(global_steps=global_steps))
             return
 
+        # 0b. hybrid mode: rollout replicas share actors with trainer and don't have
+        # separate CheckpointEngineWorker actors. Fall back to naive sync.
+        from verl.workers.rollout.replica import RolloutMode
+        if any(getattr(r, 'rollout_mode', None) in (RolloutMode.HYBRID, RolloutMode.COLOCATED) for r in self.replicas):
+            ray.get(self.trainer.update_weights(global_steps=global_steps))
+            return
+
         # 1. abort and save all unfinished requests for partial rollout
         await asyncio.gather(*[r.abort_all_requests() for r in self.replicas])
 
