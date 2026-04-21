@@ -280,7 +280,8 @@ class RayPPOTrainer:
         self.config = config
 
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
-        assert self.hybrid_engine, "Currently, only support hybrid engine"
+        if not self.hybrid_engine:
+            logger.info("Running in disaggregated mode: trainer and rollout on separate GPU pools")
 
         if self.hybrid_engine:
             assert Role.ActorRollout in role_worker_mapping or Role.ActorRolloutRef in role_worker_mapping, (
@@ -720,7 +721,15 @@ class RayPPOTrainer:
             )
             self.resource_pool_to_cls[actor_rollout_resource_pool][str(actor_role)] = actor_rollout_cls
         else:
-            raise NotImplementedError
+            # Disaggregated mode: trainer-only resource pool (rollout gets its own via standalone replicas)
+            actor_rollout_resource_pool = self.resource_pool_manager.get_resource_pool(actor_role)
+            actor_rollout_cls = RayClassWithInitArgs(
+                cls=self.role_worker_mapping[actor_role],
+                config=self.config.actor_rollout_ref,
+                distillation_config=self.config.get("distillation"),
+                role=str(actor_role),
+            )
+            self.resource_pool_to_cls[actor_rollout_resource_pool][str(actor_role)] = actor_rollout_cls
 
         # create critic
         if self.use_critic:
@@ -873,7 +882,7 @@ class RayPPOTrainer:
         reward_loop_worker_handles = self.reward_loop_manager.reward_loop_workers if enable_agent_reward_loop else None
         self.async_rollout_manager = AgentLoopManager.create(
             config=self.config,
-            worker_group=self.actor_rollout_wg,
+            worker_group=self.actor_rollout_wg if self.hybrid_engine else None,
             rollout_resource_pool=actor_rollout_resource_pool,
             reward_loop_worker_handles=reward_loop_worker_handles,
             teacher_model_manager=self.teacher_model_manager,

@@ -17,8 +17,8 @@ data:
     # Prepare dataset
     python3 /config/prep_data.py
 
-    # Wait for workers to join
-    sleep 15
+    # Wait for Ray worker node to join (2-node standalone setup)
+    sleep 60
 
     # Run verl PPO training with MX checkpoint engine
     python3 -m verl.trainer.main_ppo \
@@ -52,6 +52,9 @@ data:
       actor_rollout_ref.ref.fsdp_config.param_offload=False \
       algorithm.use_kl_in_reward=False \
       trainer.critic_warmup=0 \
+      actor_rollout_ref.hybrid_engine=False \
+      actor_rollout_ref.rollout.nnodes=1 \
+      actor_rollout_ref.rollout.n_gpus_per_node=4 \
       actor_rollout_ref.rollout.checkpoint_engine.backend=mx \
       '+actor_rollout_ref.rollout.checkpoint_engine.engine_kwargs={mx_server_url: modelexpress-server.kavin.svc.cluster.local:8001, model_name: Qwen/Qwen2.5-1.5B}' \
       trainer.total_epochs=1 \
