@@ -281,7 +281,7 @@ class RayPPOTrainer:
 
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         if not self.hybrid_engine:
-            logger.info("Running in disaggregated mode: trainer and rollout on separate GPU pools")
+            print("Running in disaggregated mode: trainer and rollout on separate GPU pools")
 
         if self.hybrid_engine:
             assert Role.ActorRollout in role_worker_mapping or Role.ActorRolloutRef in role_worker_mapping, (
