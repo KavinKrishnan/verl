@@ -31,7 +31,18 @@ spec:
       containers:
         - name: worker
           image: nvcr.io/nvidian/dynamo-dev/verl-mx:latest
-          command: ["bash", "-c", "ray start --address=verl-mx-head-0:6379 --block"]
+          command:
+            - bash
+            - -c
+            - |
+              # Resolve head node IP via K8s DNS
+              HEAD_IP=$(getent hosts verl-mx-head-0.verl-mx-head.kavin.svc.cluster.local | awk '{print $1}')
+              if [ -z "$HEAD_IP" ]; then
+                echo "Could not resolve head IP, trying hostname directly..."
+                HEAD_IP="verl-mx-head-0.verl-mx-head.kavin.svc.cluster.local"
+              fi
+              echo "Connecting to Ray head at $HEAD_IP:6379"
+              ray start --address=$HEAD_IP:6379 --block
           securityContext:
             privileged: true
           resources:

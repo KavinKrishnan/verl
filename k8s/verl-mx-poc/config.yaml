@@ -18,7 +18,9 @@ data:
     python3 /config/prep_data.py
 
     # Wait for Ray worker node to join (2-node standalone setup)
-    sleep 60
+    echo "Waiting 120s for worker node to join Ray cluster..."
+    sleep 120
+    ray status || echo "Ray status failed"
 
     # Run verl PPO training with MX checkpoint engine
     python3 -m verl.trainer.main_ppo \

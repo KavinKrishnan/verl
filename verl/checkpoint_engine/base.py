@@ -416,9 +416,12 @@ class CheckpointEngineManager:
         # 0b. hybrid mode: rollout replicas share actors with trainer and don't have
         # separate CheckpointEngineWorker actors. Fall back to naive sync.
         from verl.workers.rollout.replica import RolloutMode
-        if any(getattr(r, 'rollout_mode', None) in (RolloutMode.HYBRID, RolloutMode.COLOCATED) for r in self.replicas):
+        replica_modes = [getattr(r, 'rollout_mode', None) for r in self.replicas]
+        if any(m in (RolloutMode.HYBRID, RolloutMode.COLOCATED) for m in replica_modes):
+            print(f"[MX-DEBUG] Hybrid replicas detected ({replica_modes}), falling back to naive sync")
             ray.get(self.trainer.update_weights(global_steps=global_steps))
             return
+        print(f"[MX-DEBUG] Standalone replicas ({replica_modes}), using {self.backend} checkpoint engine")
 
         # 1. abort and save all unfinished requests for partial rollout
         await asyncio.gather(*[r.abort_all_requests() for r in self.replicas])

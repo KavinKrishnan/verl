@@ -1077,6 +1077,7 @@ class AgentLoopManager:
         ]
 
         if self.worker_group and self.rollout_config.name != "trtllm":
+            print(f"[MX-DEBUG] Initializing {len(self.rollout_replicas)} replicas in HYBRID mode")
             await asyncio.gather(*[server.init_hybrid(self.worker_group) for server in self.rollout_replicas])
         # TODO: unify trtllm to init_hybrid
         elif self.worker_group and self.rollout_config.name == "trtllm":
@@ -1087,6 +1088,7 @@ class AgentLoopManager:
                 ]
             )
         else:
+            print(f"[MX-DEBUG] Initializing {len(self.rollout_replicas)} replicas in STANDALONE mode (worker_group={self.worker_group})")
             await asyncio.gather(*[server.init_standalone() for server in self.rollout_replicas])
 
         self.server_handles = [server._server_handle for server in self.rollout_replicas]
